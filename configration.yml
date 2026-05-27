@@ -1,3 +1,11 @@
+sensor:
+  - platform: derivative
+    source: sensor.grillplats_plug_leistung_3
+    name: "Scooter Charger Power Derivative"
+    unique_id: scooter_charger_power_derivative
+    unit_time: min
+    time_window: "00:01:00"
+
 template:
   - sensor:
       # 1. Sensor für die geladenen Kilometer (basierend auf 12,6 Wh/km)
@@ -12,7 +20,6 @@ template:
         attributes:
           wh_per_km: 12.6
           calculation_factor: 79.36
-
       # 2. Sensor für die Ladekosten (mit festen 2 Nachkommastellen)
       - name: "Scooter Ladekosten"
         unique_id: scooter_cost_session
@@ -22,7 +29,6 @@ template:
           {# Preis: 0.39 € pro kWh | Formatierung auf 2 Stellen #}
           {% set cost = states('sensor.e_scooter1_scooter_energy_session') | float(0) * 0.39 %}
           {{ "{:.2f}".format(cost) }}
-
   - sensor:
       - name: "Scooter Aktuelle Reichweite (geschätzt)"
         unique_id: scooter_range_estimated
@@ -40,13 +46,11 @@ template:
         attributes:
           full_range_ref: 50
           empty_voltage_ref: 39.9
-
   - binary_sensor:
       - name: "Scooter Ladevorgang Stabil"
         unique_id: scooter_charging_stable
         delay_on: "00:00:10"
         state: "{{ states('sensor.grillplats_plug_leistung_3') | float(0) > 10 }}"
-
     sensor:
       - name: "Scooter Akku Spannung (geschätzt)"
         unique_id: scooter_voltage_estimated
@@ -56,7 +60,6 @@ template:
           {% set watt = states('sensor.grillplats_plug_leistung_3') | float(0) %}
           {% set last_v = this.state | float(0) %}
           {% set is_stable = is_state('binary_sensor.scooter_ladevorgang_stabil', 'on') %}
-
           {% if watt > 10 %}
             {% if is_stable %}
               {% if watt > 130 %}
@@ -77,8 +80,6 @@ template:
             {# Reset wenn Stecker gezogen #}
             0
           {% endif %}
-
-
   # 1. DER ANKER (Trigger-basiert)
   # Er merkt sich EINMALIG beim Einstecken, wie voll der Akku war.
   - trigger:
@@ -99,7 +100,6 @@ template:
           {% else %}
             0
           {% endif %}
-
   # 2. DIE LIVE-ANZEIGE (Normaler Template-Sensor)
   # Dieser Sensor rechnet bei jeder Änderung der geladenen km sofort neu.
   - sensor:
@@ -111,10 +111,8 @@ template:
           {% set start_km = states('sensor.scooter_start_reichweite_fix') | float(0) %}
           {% set geladen_km = states('sensor.scooter_geladene_kilometer') | float(0) %}
           {% set gesamt = (start_km + geladen_km) | round(1) %}
-
           {# Deckelung auf die maximale Reichweite von 51.8 km #}
           {{ [gesamt, 51.8] | min }}
-
   - sensor:
       - name: "Scooter Akku Prozent"
         unique_id: scooter_battery_level
@@ -122,19 +120,45 @@ template:
         device_class: battery
         state_class: measurement
         state: >
-          {% set v = states('sensor.scooter_akku_spannung_geschatzt') | float(0) %}
-
-          {% if v >= 54.6 %} 100
-          {% elif v >= 52.975 %} {{ ((v - 52.975) / (54.6 - 52.975) * 10 + 90) | round(1) }}
-          {% elif v >= 51.545 %} {{ ((v - 51.545) / (52.975 - 51.545) * 10 + 80) | round(1) }}
-          {% elif v >= 50.18 %}  {{ ((v - 50.18) / (51.545 - 50.18) * 10 + 70) | round(1) }}
-          {% elif v >= 48.945 %} {{ ((v - 48.945) / (50.18 - 48.945) * 10 + 60) | round(1) }}
-          {% elif v >= 47.814 %} {{ ((v - 47.814) / (48.945 - 47.814) * 10 + 50) | round(1) }}
-          {% elif v >= 46.605 %} {{ ((v - 46.605) / (47.814 - 46.605) * 10 + 40) | round(1) }}
-          {% elif v >= 45.37 %}  {{ ((v - 45.37) / (46.605 - 45.37) * 10 + 30) | round(1) }}
-          {% elif v >= 44.005 %} {{ ((v - 44.005) / (45.37 - 44.005) * 10 + 20) | round(1) }}
-          {% elif v >= 42.185 %} {{ ((v - 42.185) / (44.005 - 42.185) * 10 + 10) | round(1) }}
-          {% elif v >= 40.56 %}  {{ ((v - 40.56) / (42.185 - 40.56) * 5 + 5) | round(1) }}
-          {% elif v >= 39.0 %}   {{ ((v - 39.0) / (40.56 - 39.0) * 5 + 0) | round(1) }}
-          {% else %} 0
-          {% endif %}
+          {%- set charger_current = 3 -%}
+          {%- set charger_efficiency = 92 -%}
+          {%- set derive = states('sensor.scooter_charger_power_derivative') | float(none) -%}
+          {%- set charger_power = states('sensor.grillplats_plug_leistung_3') | float(none) -%}
+          {%- if charger_power != none and charger_power > 5 and derive != none -%}
+          {%-   if derive > 0 -%}
+          {%-     set v_est = (charger_power * (charger_efficiency / 100)) / charger_current -%}
+          {%-     set table = [
+                    [39.70, 0], [41.40, 5], [43.20, 10], [45.20, 20], [46.65, 30],
+                    [47.95, 40], [49.15, 50], [50.45, 60], [51.75, 70], [53.15, 80],
+                    [54.60, 90]
+                  ] -%}
+          {%-     set ns = namespace(soc=0, found=false) -%}
+          {%-     if v_est <= table[0][0] -%}
+          {%-       set ns.soc = 0 -%}
+          {%-     elif v_est >= table[-1][0] -%}
+          {%-       set ns.soc = 90 -%}
+          {%-     else -%}
+          {%-       for i in range(table|length - 1) -%}
+          {%-         if not ns.found and v_est >= table[i][0] and v_est <= table[i+1][0] -%}
+          {%-           set v1, s1 = table[i][0], table[i][1] -%}
+          {%-           set v2, s2 = table[i+1][0], table[i+1][1] -%}
+          {%-           set ns.soc = s1 + (v_est - v1) * (s2 - s1) / (v2 - v1) -%}
+          {%-           set ns.found = true -%}
+          {%-         endif -%}
+          {%-       endfor -%}
+          {%-     endif -%}
+          {{      ns.soc | round(1) }}
+          {%-   else -%}
+          {%-     set p_start = (54.6 * charger_current) / (charger_efficiency / 100) -%}
+          {%-     set p_end = 15.0 -%}
+          {%-     if charger_power >= p_start -%}
+          {{        90.0 }}
+          {%-     elif charger_power <= p_end -%}
+          {{        100.0 }}
+          {%-     else -%}
+          {{        (100.0 - ((charger_power - p_end) / (p_start - p_end)) * 10.0) | round(1) }}
+          {%-     endif -%}
+          {%-   endif -%}
+          {%- else -%}
+          {{    this.state if this is defined and this.state | is_number else 0 }}
+          {%- endif -%}
