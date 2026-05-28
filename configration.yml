@@ -12,7 +12,7 @@ sensor:
     name: "Scooter Charger Power Derivative"
     unique_id: scooter_charger_power_derivative
     unit_time: min
-    time_window: "00:01:00"
+    time_window: "00:03:00"
 
 template:
   - sensor:
@@ -43,7 +43,7 @@ template:
         unit_of_measurement: "km"
         device_class: distance
         state: >
-          {% set t = states('sensor.trag_hier_einen_aussentemperatursensor_ein_z_b_wettervorhersage_oder_dwd_oder_wetterstation_usw') | float(25) %}
+          {% set t = state_attr('weather.forecast_home','temperature') | float(25) %}
           {% set range_25c = states('input_number.scooter_referenz_reichweite_25c') | float(50) %}
           {{ (range_25c * (0.01538 * t + 0.61538)) | round(1) }}
 
