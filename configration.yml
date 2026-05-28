@@ -1,3 +1,11 @@
+input_number:
+  scooter_referenz_reichweite_25c:
+    name: "Scooter Referenz-Reichweite (25°C)"
+    min: 10
+    max: 120
+    unit_of_measurement: "km"
+    initial: 50
+
 sensor:
   - platform: derivative
     source: sensor.grillplats_plug_leistung_3
@@ -29,23 +37,26 @@ template:
           {# Preis: 0.39 € pro kWh | Formatierung auf 2 Stellen #}
           {% set cost = states('sensor.e_scooter1_scooter_energy_session') | float(0) * 0.39 %}
           {{ "{:.2f}".format(cost) }}
+
+      - name: "Scooter Referenz-Reichweite aktuell"
+        unique_id: scooter_referenz_reichweite_aktuell
+        unit_of_measurement: "km"
+        device_class: distance
+        state: >
+          {% set t = states('sensor.trag_hier_einen_aussentemperatursensor_ein_z_b_wettervorhersage_oder_dwd_oder_wetterstation_usw') | float(25) %}
+          {% set range_25c = states('input_number.scooter_referenz_reichweite_25c') | float(50) %}
+          {{ (range_25c * (0.01538 * t + 0.61538)) | round(1) }}
+
   - sensor:
       - name: "Scooter Aktuelle Reichweite (geschätzt)"
         unique_id: scooter_range_estimated
         unit_of_measurement: "km"
         device_class: distance
         state: >
-          {% set voltage = states('sensor.scooter_akku_spannung_geschatzt') | float(0) %}
-          {% if voltage > 39.9 %}
-            {# Berechnung: (Aktuelle Volt - Leer Volt) * (Gesamt-km / Spannungs-Differenz) #}
-            {# (voltage - 39.9) * (50 / 14.5) #}
-            {{ ((voltage - 39.9) * 3.448) | round(1) }}
-          {% else %}
-            0
-          {% endif %}
-        attributes:
-          full_range_ref: 50
-          empty_voltage_ref: 39.9
+          {% set soc = states('sensor.scooter_akku_prozent') | float(0) %}
+          {% set ref_range = states('sensor.scooter_referenz_reichweite_aktuell') | float(50) %}
+          {{ ((soc / 100) * ref_range) | round(0) }}
+
   - binary_sensor:
       - name: "Scooter Ladevorgang Stabil"
         unique_id: scooter_charging_stable
@@ -92,14 +103,10 @@ template:
         unique_id: scooter_start_range_fix
         unit_of_measurement: "km"
         state: >
-          {% set v_now = states('sensor.scooter_akku_spannung_geschatzt') | float(0) %}
-          {# Wir ziehen 1.2V Ladedruck ab, um den echten Batteriestand zu schätzen #}
-          {% if v_now > 40 %}
-            {% set v_start = v_now - 1.2 %}
-            {{ ((v_start - 39.9) * 3.57) | round(2) }}
-          {% else %}
-            0
-          {% endif %}
+          {% set soc = states('sensor.scooter_akku_prozent') | float(0) %}
+          {% set ref_range = states('sensor.scooter_referenz_reichweite_aktuell') | float(50) %}
+          {{ ((soc / 100) * ref_range) | round(0) }}
+
   # 2. DIE LIVE-ANZEIGE (Normaler Template-Sensor)
   # Dieser Sensor rechnet bei jeder Änderung der geladenen km sofort neu.
   - sensor:
@@ -110,9 +117,10 @@ template:
         state: >
           {% set start_km = states('sensor.scooter_start_reichweite_fix') | float(0) %}
           {% set geladen_km = states('sensor.scooter_geladene_kilometer') | float(0) %}
+          {% set max_km = states('sensor.scooter_referenz_reichweite_aktuell') | float(50) %}
           {% set gesamt = (start_km + geladen_km) | round(1) %}
-          {# Deckelung auf die maximale Reichweite von 51.8 km #}
-          {{ [gesamt, 51.8] | min }}
+          {{ [gesamt, max_km] | min }}
+
   - sensor:
       - name: "Scooter Akku Prozent"
         unique_id: scooter_battery_level
@@ -147,18 +155,18 @@ template:
           {%-         endif -%}
           {%-       endfor -%}
           {%-     endif -%}
-          {{      ns.soc | round(1) }}
+          {{      ns.soc | round(0) }}
           {%-   else -%}
           {%-     set p_start = (54.6 * charger_current) / (charger_efficiency / 100) -%}
           {%-     set p_end = 15.0 -%}
           {%-     if charger_power >= p_start -%}
-          {{        90.0 }}
+          {{        90 }}
           {%-     elif charger_power <= p_end -%}
-          {{        100.0 }}
+          {{        100 }}
           {%-     else -%}
-          {{        (100.0 - ((charger_power - p_end) / (p_start - p_end)) * 10.0) | round(1) }}
+          {{        (100.0 - ((charger_power - p_end) / (p_start - p_end)) * 10.0) | round(0) }}
           {%-     endif -%}
           {%-   endif -%}
           {%- else -%}
-          {{    this.state if this is defined and this.state | is_number else 0 }}
+          {{    (this.state | float(0)) | round(0) if this is defined else 0 }}
           {%- endif -%}
