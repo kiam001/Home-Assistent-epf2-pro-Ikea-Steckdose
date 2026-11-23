@@ -1,7 +1,14 @@
 # Home-Assistent-epf2-pro-Ikea-Steckdose
 Zeigt den aktuellen Akkustand und Kilometer an anhand einer Stromzähler Steckdose von Ikea für 8€
 
+Update 23.11.2026
+<img width="1599" height="947" alt="grafik" src="https://github.com/user-attachments/assets/bbc6b196-8ceb-4481-9a06-9c0475c5cc84" />
+
+
+Alte Version:
+
 ![Screenshot](Screenshot_2026-05-28-23-52-11-201_io.homeassistant.companion.android.jpg)
+
 
 es muss noch ein knopf erstellt werden um den Energie Zähler zurück zu setzen und ein Helfer für einen Energiezähler für den E-Scooter
 
