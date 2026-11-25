@@ -480,10 +480,12 @@ template:
         state: >
           {%- set charger_current = 2.0 -%}
           {%- set charger_efficiency = 92 -%}
+          {%- set cc_min_power = 85.0 -%}
           {%- set derive = states('sensor.epf_skate_charger_power_derivative') | float(none) -%}
           {%- set charger_power = states('sensor.schlafzimmer_epfsakate_leistung') | float(none) -%}
-          {%- if charger_power != none and charger_power > 5 and derive != none -%}
-          {%-   if derive > 0 -%}
+          {%- set is_stable = is_state('binary_sensor.epf_skate_ladevorgang_stabil', 'on') -%}
+          {%- if charger_power != none and charger_power > 5 and is_stable and derive != none -%}
+          {%-   if charger_power >= cc_min_power and derive > -0.5 -%}
           {%-     set v_est = (charger_power * (charger_efficiency / 100)) / charger_current -%}
           {%-     set table = [
                     [39.70, 0], [41.40, 5], [43.20, 10], [45.20, 20], [46.65, 30],
@@ -508,7 +510,7 @@ template:
           {{      ns.soc | round(0) }}
           {%-   else -%}
           {%-     set p_start = (54.6 * charger_current) / (charger_efficiency / 100) -%}
-          {%-     set p_end = 8.0 -%}
+          {%-     set p_end = 15.0 -%}
           {%-     if charger_power >= p_start -%}
           {{        90 }}
           {%-     elif charger_power <= p_end -%}
